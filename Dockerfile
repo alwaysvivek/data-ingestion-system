@@ -1,15 +1,18 @@
 # Stage 1: Build the React Frontend
-FROM node:20-bookworm-slim as frontend-builder
+FROM node:22-bookworm as frontend-builder
 WORKDIR /app/frontend
-# Ensure build tools are present for modern native dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-COPY frontend/package*.json ./
-RUN npm install
+
+# Copy only package.json first
+COPY frontend/package.json ./
+
+# Force a clean install that ignores the macOS architecture-specific lockfile
+# This ensures that native binaries (like Rolldown/Vite 8) are resolved for Linux
+RUN npm install --no-package-lock
+
+# Copy the rest of the frontend source
 COPY frontend/ ./
+
+# Perform the production build
 RUN npm run build
 
 # Stage 2: Build the Final Monolithic Service
