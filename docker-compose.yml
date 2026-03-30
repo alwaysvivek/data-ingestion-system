@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ingestor-data:/app/data # Persistent volume for SQLite
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+      - DATABASE_URL=data/ingestor.db
+    networks:
+      - ingestor-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:8080" # Mapping host 5173 to container's non-root 8080
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    networks:
+      - ingestor-network
+
+networks:
+  ingestor-network:
+    driver: bridge
+
+volumes:
+  ingestor-data: # Docker-managed volume for data persistence

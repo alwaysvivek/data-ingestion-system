@@ -1,0 +1,19 @@
+# Python local env
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Node/Vite build artifacts
+**/node_modules
+**/dist
+**/.env
+**/.env.local
+
+# Logs and OS files
+**/*.log
+.DS_Store
+.git
+.gitignore
+.dockerignore
