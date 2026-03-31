@@ -1,6 +1,12 @@
 # Stage 1: Build the React Frontend
-FROM node:20-alpine as frontend-builder
+FROM node:20-bookworm-slim as frontend-builder
 WORKDIR /app/frontend
+# Ensure build tools are present for modern native dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
