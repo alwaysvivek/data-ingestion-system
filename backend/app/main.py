@@ -5,6 +5,7 @@ import time
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -100,8 +101,6 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)) -> Data
     if not file.filename:
         raise HTTPException(status_code=400, detail="File name is missing.")
 
-    # Chunk-based reading would be better for extremely large files,
-    # but for 50MB limit, this is safe with the Content-Length check above.
     content = await file.read()
     
     records, columns = parse_and_validate(file.filename, content)
@@ -147,6 +146,13 @@ def get_dataset(request: Request, dataset_id: str) -> DatasetDetail:
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found.")
     return dataset
+
+# 3. Static File Serving (Unified Container)
+# Serves the React 'dist' directory from the root path
+# Only if the 'static' directory exists (built by monolithic Docker)
+frontend_path = os.path.join(os.getcwd(), "static")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
 
 @app.websocket("/ws")
 async def websocket_updates(websocket: WebSocket):
