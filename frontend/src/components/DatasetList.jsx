@@ -73,13 +73,22 @@ function DatasetList({
             <button
               id={`dataset-${dataset.id}`}
               type="button"
-              className={`dataset-item ${selectedId === dataset.id ? "selected" : ""} ${highlightedId === dataset.id ? "pulse-highlight" : ""}`}
-              onClick={() => onSelect(dataset.id)}
+              className={`dataset-item ${selectedId === dataset.id ? "selected" : ""} ${highlightedId === dataset.id ? "pulse-highlight" : ""} ${dataset.status !== "completed" ? "disabled-item" : ""}`}
+              onClick={() => dataset.status === "completed" && onSelect(dataset.id)}
+              disabled={dataset.status === "processing"}
             >
-              <span className="file-name-text">📄 {dataset.file_name}</span>
-              <span className="dataset-meta">
-                {dataset.record_count.toLocaleString()} rows · {new Date(dataset.upload_time).toLocaleDateString()}
-              </span>
+              <div className="item-content-stack">
+                <span className="file-name-text">📄 {dataset.file_name}</span>
+                <span className="dataset-meta">
+                  {dataset.status === "completed" ? (
+                    `${dataset.record_count.toLocaleString()} rows · ${new Date(dataset.upload_time).toLocaleDateString()}`
+                  ) : dataset.status === "processing" ? (
+                    <span className="status-processing">⚙️ Processing...</span>
+                  ) : (
+                    <span className="status-failed">❌ Ingestion Failed</span>
+                  )}
+                </span>
+              </div>
             </button>
             <button
               type="button"

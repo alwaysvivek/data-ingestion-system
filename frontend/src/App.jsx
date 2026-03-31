@@ -105,11 +105,26 @@ function App() {
   // Real-time Event Listener (WebSocket)
   useEffect(() => {
     const socket = openDatasetsSocket((message) => {
+      // Handle standard creation/deletion
       if (message.event === "dataset_uploaded" || message.event === "dataset_deleted") {
         loadDatasets();
         if (message.event === "dataset_deleted" && message.dataset_id === selectedDatasetId) {
           setSelectedDatasetId(null);
           setSelectedDataset(null);
+        }
+      }
+
+      // Handle async completion
+      if (message.event === "dataset_completed") {
+        loadDatasets();
+        if (message.dataset_id === selectedDatasetId) {
+          loadDatasetDetails(message.dataset_id);
+        }
+        
+        if (message.status === "completed") {
+          addNotification("success", "Dataset processing complete.");
+        } else {
+          addNotification("error", "Dataset ingestion failed in background.");
         }
       }
     });

@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +11,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .logging_config import configure_logging
-from .models import DatasetDetail, DatasetMetadata
+from .models import DatasetDetail, DatasetMetadata, DatasetStatus
 from .parser import parse_and_validate
 from .realtime import ConnectionManager
 from .store import DatasetStore
@@ -48,7 +48,6 @@ async def security_safeguards(request: Request, call_next):
     Middleware to enforce production security limits:
     - Max Request Size: 50MB (Prevents RAM exhaustion/OOM DoS)
     """
-    # 50MB Limit
     MAX_FILE_SIZE = 50 * 1024 * 1024
     
     if request.method == "POST" and request.url.path == "/upload":
@@ -77,6 +76,26 @@ async def security_safeguards(request: Request, call_next):
     )
     return response
 
+# Helper for Background Ingestion
+async def run_ingestion_background(dataset_id: str, file_name: str, content: bytes):
+    """
+    Background worker that handles the slow parsing and DB write.
+    Broadcasts a WebSocket message once finished.
+    """
+    try:
+        # Perform the actual parsing
+        records, columns = parse_and_validate(file_name, content)
+        
+        # Atomically update DB to 'completed'
+        store.update_completion(dataset_id, records, columns)
+        
+        logger.info(f"Background task: dataset {dataset_id} completed.")
+        await connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "completed"})
+    except Exception as e:
+        logger.error(f"Background ingestion failed for {dataset_id}: {e}", exc_info=True)
+        store.update_completion(dataset_id, [], [], status=DatasetStatus.FAILED, error_message=str(e))
+        await connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "failed"})
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global catch-all for unhandled exceptions."""
@@ -91,33 +110,29 @@ def health() -> dict[str, str]:
     """Health check endpoint for Docker/Kubernetes monitoring."""
     return {"status": "ok"}
 
-@app.post("/upload", response_model=DatasetMetadata)
+@app.post("/upload", response_model=DatasetMetadata, status_code=202)
 @limiter.limit("5/minute")
-async def upload_dataset(request: Request, file: UploadFile = File(...)) -> DatasetMetadata:
+async def upload_dataset(
+    request: Request, 
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...)
+) -> DatasetMetadata:
     """
-    Accepts CSV or JSON file, parses it, validates schema, and stores it in SQLite.
-    Includes a 5-per-minute rate limit for this endpoint.
+    Acquires file, returns 202 immediately, and processes ingestion in background.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="File name is missing.")
 
+    # Read the file to memory (Wait for this, but don't wait for parsing)
     content = await file.read()
     
-    records, columns = parse_and_validate(file.filename, content)
-    dataset = store.create(file.filename, records, columns)
+    # Create the 'pending' metadata entry in SQLite
+    dataset = store.create_pending(file.filename)
     
-    logger.info(
-        "dataset.uploaded",
-        extra={
-            "extra": {
-                "dataset_id": dataset.id,
-                "file_name": dataset.file_name,
-                "record_count": dataset.record_count,
-            }
-        },
-    )
+    # Enqueue the slow parser/store logic
+    background_tasks.add_task(run_ingestion_background, dataset.id, file.filename, content)
     
-    await connections.broadcast({"event": "dataset_uploaded", "dataset_id": dataset.id})
+    logger.info(f"Ingestion started for {dataset.id}. Returning 202.")
     return dataset
 
 @app.get("/datasets", response_model=list[DatasetMetadata])
@@ -141,15 +156,18 @@ async def delete_dataset(request: Request, dataset_id: str) -> dict[str, str]:
 @app.get("/datasets/{dataset_id}", response_model=DatasetDetail)
 @limiter.limit("30/minute")
 def get_dataset(request: Request, dataset_id: str) -> DatasetDetail:
-    """Fetches details (metadata + preview) for a single dataset."""
+    """Fetches details for a single dataset."""
     dataset = store.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found.")
+    
+    if dataset.metadata.status == DatasetStatus.PROCESSING:
+        # Don't show detail yet if still processing
+        return dataset
+
     return dataset
 
 # 3. Static File Serving (Unified Container)
-# Serves the React 'dist' directory from the root path
-# Only if the 'static' directory exists (built by monolithic Docker)
 frontend_path = os.path.join(os.getcwd(), "static")
 if os.path.exists(frontend_path):
     app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")

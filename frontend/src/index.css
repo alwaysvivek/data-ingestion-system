@@ -169,12 +169,36 @@ body {
 }
 
 .dataset-item.selected {
-  background: #f5f3ff;
-  border-left-color: var(--accent);
+  background: var(--slate-100);
+  border-color: var(--slate-300);
+  color: var(--slate-900);
+  box-shadow: inset 0 0 0 1px var(--slate-200);
 }
 
-.dataset-item.selected .file-name-text {
-  color: var(--accent);
+.disabled-item {
+  opacity: 0.7;
+  cursor: default;
+  filter: grayscale(0.5);
+}
+
+.item-content-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.status-processing {
+  color: var(--blue-600);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-failed {
+  color: #e11d48; /* Red 600 */
+  font-weight: 500;
 }
 
 .file-name-text {
