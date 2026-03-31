@@ -1,12 +1,12 @@
-# Stage 1: Build the React Frontend
-FROM node:22-bookworm as frontend-builder
+# Stage 1: Build the React Frontend (Vite 6 Stable)
+FROM node:20-bookworm-slim as frontend-builder
 WORKDIR /app/frontend
 
 # Copy only package.json first
 COPY frontend/package.json ./
 
 # Force a clean install that ignores the macOS architecture-specific lockfile
-# This ensures that native binaries (like Rolldown/Vite 8) are resolved for Linux
+# This ensures that native binaries (esbuild/Vite 6) are resolved for Linux
 RUN npm install --no-package-lock
 
 # Copy the rest of the frontend source

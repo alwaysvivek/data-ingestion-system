@@ -1,11 +1,13 @@
 # Stage 1: Build the React application
-FROM node:20-alpine as build-stage
-
+FROM node:20-bookworm-slim as build-stage
 WORKDIR /app
 
-# Copy package.json and install dependencies
+# Copy only package.json first
 COPY package*.json ./
-RUN npm install
+
+# Force a clean install that ignores the macOS architecture-specific lockfile
+# This ensures that native binaries (esbuild/Vite 6) are resolved for Linux
+RUN npm install --no-package-lock
 
 # Copy source code and build
 COPY . .
