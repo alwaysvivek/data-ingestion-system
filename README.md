@@ -1,6 +1,11 @@
 # 🚀 Data Ingestion System (Unified Monolith)
 
-A professional, real-time **All-in-One Dashboard** designed for seamless dataset management. This system allows users to upload, validate, and preview CSV and JSON data in a unified workspace with live synchronization and persistent PostgreSQL storage.
+A professional, real-time **All-in-One Dashboard** designed for dataset management. Upload, validate, and preview CSV/JSON data in a unified workspace with persistent PostgreSQL storage.
+
+---
+
+## 🔗 Live Application
+**Deployment**: [https://data-ingestion-system-febu.onrender.com/](https://data-ingestion-system-febu.onrender.com/)
 
 ---
 
@@ -74,22 +79,6 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload  # Backend at port 8000
 cd ../frontend && npm install && npm run dev  # Frontend at port 5173
 ```
-
----
-
-## 🚢 Deployment
-
-### Docker (Unified Build)
-Build and run the entire system as a single containerized monolith:
-```bash
-docker build -t data-ingestion-system .
-docker run -p 8000:8000 -e DATABASE_URL="your_db_url" data-ingestion-system
-```
-
-### Render Blueprint
-1. Go to **Render Dashboard** -> **New** -> **Blueprint**.
-2. Connect this repository.
-3. Set the `DATABASE_URL` environment variable.
 
 ---
 
