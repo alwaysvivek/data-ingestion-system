@@ -16,9 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create data directory for SQLite and set ownership
-RUN mkdir -p data && chown appuser:appgroup data
-
 # Copy the application code
 COPY ./app ./app
 RUN chown -R appuser:appgroup /app

@@ -10,6 +10,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+from .database import Base, engine
 from .logging_config import configure_logging
 from .models import DatasetDetail, DatasetMetadata, DatasetStatus
 from .parser import parse_and_validate
@@ -20,14 +21,17 @@ from .store import DatasetStore
 configure_logging()
 logger = logging.getLogger("data-ingestion")
 
+# Create database tables if they don't exist
+Base.metadata.create_all(bind=engine)
+
 # Rate Limiter Configuration
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Data Ingestion System")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Database Store (Uses SQLite in production-grade data/ directory)
-store = DatasetStore(db_path=os.getenv("DATABASE_URL", "data/ingestor.db"))
+# Database Store (Uses SQLAlchemy with PostgreSQL)
+store = DatasetStore()
 connections = ConnectionManager()
 
 # 2. Hardened Middleware Configuration
@@ -76,11 +80,13 @@ async def security_safeguards(request: Request, call_next):
     )
     return response
 
-# Helper for Background Ingestion
-async def run_ingestion_background(dataset_id: str, file_name: str, content: bytes):
+import asyncio
+
+# Helper for Background Ingestion (now a standard def to run in a threadpool)
+def run_ingestion_background(dataset_id: str, file_name: str, content: bytes):
     """
     Background worker that handles the slow parsing and DB write.
-    Broadcasts a WebSocket message once finished.
+    Runs in a separate thread to keep the main event loop responsive.
     """
     try:
         # Perform the actual parsing
@@ -90,11 +96,12 @@ async def run_ingestion_background(dataset_id: str, file_name: str, content: byt
         store.update_completion(dataset_id, records, columns)
         
         logger.info(f"Background task: dataset {dataset_id} completed.")
-        await connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "completed"})
+        # Schedule the async broadcast from the thread
+        asyncio.run(connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "completed"}))
     except Exception as e:
         logger.error(f"Background ingestion failed for {dataset_id}: {e}", exc_info=True)
         store.update_completion(dataset_id, [], [], status=DatasetStatus.FAILED, error_message=str(e))
-        await connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "failed"})
+        asyncio.run(connections.broadcast({"event": "dataset_completed", "dataset_id": dataset_id, "status": "failed"}))
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
