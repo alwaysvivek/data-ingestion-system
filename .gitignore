@@ -9,3 +9,4 @@ backend/.env
 data/
 backend/data/
 DEPLOYMENT.md
+backend/static/
