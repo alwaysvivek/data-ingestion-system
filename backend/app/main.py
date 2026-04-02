@@ -168,16 +168,7 @@ def get_dataset(request: Request, dataset_id: str) -> DatasetDetail:
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found.")
     
-    if dataset.metadata.status == DatasetStatus.PROCESSING:
-        # Don't show detail yet if still processing
-        return dataset
-
     return dataset
-
-# 3. Static File Serving (Unified Container)
-frontend_path = os.path.join(os.getcwd(), "static")
-if os.path.exists(frontend_path):
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
 
 @app.websocket("/ws")
 async def websocket_updates(websocket: WebSocket):
@@ -188,3 +179,19 @@ async def websocket_updates(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         connections.disconnect(websocket)
+
+
+# 3. Static File Serving (Unified Container)
+# Important: This must be AFTER all other routes so it doesn't shadow them.
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+frontend_path = os.path.join(os.getcwd(), "static")
+if os.path.exists(frontend_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # If the path looks like a file (has an extension), but wasn't found in /assets, 
+        # we still serve index.html to let the frontend handle the 404 or routing.
+        return FileResponse(os.path.join(frontend_path, "index.html"))

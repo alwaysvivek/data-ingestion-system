@@ -1,61 +1,44 @@
-# Stage 1: Build the React Frontend (Vite 6 Stable)
-FROM node:20-bookworm-slim as frontend-builder
-WORKDIR /app/frontend
-
-# Copy only package.json first
-COPY frontend/package.json ./
-
-# Force a clean install that ignores the macOS architecture-specific lockfile
-# This ensures that native binaries (esbuild/Vite 6) are resolved for Linux
-RUN npm install --no-package-lock
-
-# Copy the rest of the frontend source
+# --- Phase 1: Build the Frontend ---
+FROM node:18-alpine AS frontend-builder
+WORKDIR /build
+COPY frontend/package*.json ./
+RUN npm ci
 COPY frontend/ ./
-
-# Perform the production build
 RUN npm run build
 
-# Stage 2: Build the Final Monolithic Service
+# --- Phase 2: Create the Backend Runtime ---
 FROM python:3.11-slim
-
-# Set working directory
 WORKDIR /app
 
-# Create a non-privileged user for security
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-
-# Install system dependencies
+# Install system dependencies (needed for psycopg2 and curl for healthchecks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements and install
-COPY backend/requirements.txt .
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories and set ownership
-RUN mkdir -p data static && chown -R appuser:appgroup /app
+# Copy backend application code
+COPY backend/app ./app
 
-# Copy the Backend application code
-COPY ./backend/app ./app
+# Copy built frontend assets into the 'static' directory
+COPY --from=frontend-builder /build/dist ./static
 
-# Copy the Frontend build artifacts from Stage 1 into the 'static' folder
-COPY --from=frontend-builder /app/frontend/dist ./static
-RUN chown -R appuser:appgroup /app/static
-
-# Final ownership check
+# Set security context
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 RUN chown -R appuser:appgroup /app
-
-# Switch to non-root user
 USER appuser
 
-# Expose the API and UI (Unified on Port 8000)
+# Expose the port (FastAPI default or Render $PORT)
 EXPOSE 8000
 
-# Healthcheck for automated monitoring
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the FastAPI application (serving both API and Static UI)
+# Start the application
+# We use $(pwd) to ensure it finds the 'static' folder correctly
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
